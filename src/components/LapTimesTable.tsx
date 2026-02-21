@@ -48,7 +48,7 @@ const LapTimesTable = ({ laps }: LapTimesTableProps) => {
           <div className="flex-1 min-w-0">
             <p className="text-xs uppercase tracking-widest text-muted-foreground mb-1">Najlepszy czas</p>
             <div className="flex items-baseline gap-4 flex-wrap">
-              <span className="text-3xl font-mono font-bold text-primary text-glow">{bestLap.time}</span>
+              <span className="text-3xl font-mono font-bold text-primary">{bestLap.time}</span>
               <span className="text-sm text-muted-foreground">
                 Okrążenie #{bestLap.lapNumber} • {bestLap.sessionName}
               </span>
