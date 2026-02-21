@@ -5,11 +5,12 @@ import SessionsPopup from "@/components/SessionsPopup";
 import TracksPopup from "@/components/TracksPopup";
 import BluetoothButton from "@/components/BluetoothButton";
 import { Timer } from "lucide-react";
+import { demoSessions, demoTracks } from "@/data/demo-data";
 
 const Index = () => {
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [selectedSessionIds, setSelectedSessionIds] = useState<string[]>([]);
-  const [tracks, setTracks] = useState<Track[]>([]);
+  const [sessions, setSessions] = useState<Session[]>(demoSessions);
+  const [selectedSessionIds, setSelectedSessionIds] = useState<string[]>(demoSessions.map(s => s.id));
+  const [tracks, setTracks] = useState<Track[]>(demoTracks);
 
   const allLaps = useMemo<LapTime[]>(() => {
     return sessions
