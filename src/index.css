@@ -4,6 +4,10 @@
 
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
 
+@import url("https://fonts.googleapis.com/css2?family=Inter&display=swap");
+
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono&display=swap");
+
 @layer base {
   :root {
     --background: 240 20% 4%;
@@ -15,7 +19,7 @@
     --popover: 240 15% 8%;
     --popover-foreground: 0 0% 95%;
 
-    --primary: 110 100% 55%;
+    --primary: 217 91.2195% 59.8039%;
     --primary-foreground: 240 20% 4%;
 
     --secondary: 240 10% 14%;
@@ -24,7 +28,7 @@
     --muted: 240 10% 12%;
     --muted-foreground: 240 5% 50%;
 
-    --accent: 110 100% 55%;
+    --accent: 212 96.3636% 78.4314%;
     --accent-foreground: 240 20% 4%;
 
     --destructive: 0 72% 51%;
@@ -32,7 +36,7 @@
 
     --border: 240 10% 18%;
     --input: 240 10% 18%;
-    --ring: 110 100% 55%;
+    --ring: 221 83.1933% 53.3333%;
 
     --radius: 0.5rem;
 
