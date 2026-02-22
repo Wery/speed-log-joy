@@ -56,27 +56,85 @@ export function parseSessionCsv(csvContent: string, fileName: string): Session {
   };
 }
 
+// Generuje TRACKS.CSV w formacie urządzenia ESP32:
+// id;name;lat1_×1e7;lng1_×1e7;lat2_×1e7;lng2_×1e7 (bez nagłówka)
 export function tracksToCSV(tracks: Track[]): string {
-  const header = 'name,lat1,lng1,lat2,lng2';
-  const rows = tracks.map(t =>
-    `${t.name},${t.finishLinePoint1.lat},${t.finishLinePoint1.lng},${t.finishLinePoint2.lat},${t.finishLinePoint2.lng}`
+  return tracks.map((t, i) =>
+    [
+      i + 1,
+      t.name,
+      Math.round(t.finishLinePoint1.lat * 1e7),
+      Math.round(t.finishLinePoint1.lng * 1e7),
+      Math.round(t.finishLinePoint2.lat * 1e7),
+      Math.round(t.finishLinePoint2.lng * 1e7),
+    ].join(';')
+  ).join('\n');
+}
+
+// Konwertuje całkowitoliczbową współrzędną z GPS (stopnie × 10^6 lub 10^7)
+// na stopnie dziesiętne. Jeśli wartość /1e6 wykracza poza zakres ±180, dzieli przez 1e7.
+function intCoordToDeg(v: number): number {
+  const d = v / 1e6;
+  return Math.abs(d) > 180 ? v / 1e7 : d;
+}
+
+function isValidCoord(lat: number, lng: number): boolean {
+  return (
+    Number.isFinite(lat) && Number.isFinite(lng) &&
+    Math.abs(lat) <= 90 && Math.abs(lng) <= 180 &&
+    // odrzuć współrzędne bliskie (0,0) — oznaczają uszkodzone dane
+    (Math.abs(lat) > 0.5 || Math.abs(lng) > 0.5)
   );
-  return [header, ...rows].join('\n');
 }
 
 export function parseTracksCsv(csvContent: string): Track[] {
-  const lines = csvContent.trim().split('\n');
+  const lines = csvContent.trim().split(/\r?\n/).filter(l => l.trim());
+  if (lines.length === 0) return [];
+
+  // Wykryj format po separatorze pierwszej linii zawierającej dane liczbowe.
+  // Format ESP32: id;name;lat1;lng1;lat2;lng2 (separator ";", bez nagłówka)
+  // Format lokalny: name,lat1,lng1,lat2,lng2  (separator ",", z nagłówkiem)
+  const hasSemicolon = lines.some(l => l.includes(';'));
+
+  if (hasSemicolon) {
+    return lines
+      .filter(l => l.includes(';'))
+      .map(line => {
+        const cols = line.split(';').map(c => c.trim());
+        // wymagane dokładnie 6 pól: id;name;lat1;lng1;lat2;lng2
+        if (cols.length < 6) return null;
+        const lat1 = intCoordToDeg(Number(cols[2]));
+        const lng1 = intCoordToDeg(Number(cols[3]));
+        const lat2 = intCoordToDeg(Number(cols[4]));
+        const lng2 = intCoordToDeg(Number(cols[5]));
+        if (!isValidCoord(lat1, lng1) || !isValidCoord(lat2, lng2)) return null;
+        return {
+          id: crypto.randomUUID(),
+          name: cols[1] || 'Unknown',
+          finishLinePoint1: { lat: lat1, lng: lng1 },
+          finishLinePoint2: { lat: lat2, lng: lng2 },
+        };
+      })
+      .filter((t): t is Track => t !== null);
+  }
+
+  // Format lokalny z nagłówkiem (name,lat1,lng1,lat2,lng2)
   if (lines.length < 2) return [];
-  
-  return lines.slice(1).filter(l => l.trim()).map(line => {
-    const [name, lat1, lng1, lat2, lng2] = line.split(',').map(c => c.trim());
+  return lines.slice(1).map(line => {
+    const cols = line.split(',').map(c => c.trim());
+    if (cols.length < 5) return null;
+    const lat1 = parseFloat(cols[1]);
+    const lng1 = parseFloat(cols[2]);
+    const lat2 = parseFloat(cols[3]);
+    const lng2 = parseFloat(cols[4]);
+    if (!isValidCoord(lat1, lng1) || !isValidCoord(lat2, lng2)) return null;
     return {
       id: crypto.randomUUID(),
-      name: name || 'Unknown',
-      finishLinePoint1: { lat: parseFloat(lat1) || 0, lng: parseFloat(lng1) || 0 },
-      finishLinePoint2: { lat: parseFloat(lat2) || 0, lng: parseFloat(lng2) || 0 },
+      name: cols[0] || 'Unknown',
+      finishLinePoint1: { lat: lat1, lng: lng1 },
+      finishLinePoint2: { lat: lat2, lng: lng2 },
     };
-  });
+  }).filter((t): t is Track => t !== null);
 }
 
 export function getBestLap(laps: LapTime[]): LapTime | null {

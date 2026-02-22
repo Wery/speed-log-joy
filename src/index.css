@@ -52,8 +52,8 @@
     --font-mono: 'JetBrains Mono', monospace;
     --font-sans: 'Inter', sans-serif;
 
-    --glow-primary: 0 0 20px hsl(110 100% 55% / 0.3);
-    --glow-primary-strong: 0 0 30px hsl(110 100% 55% / 0.5);
+    --glow-primary: 0 0 20px hsla(214, 100%, 55%, 0.3);
+    --glow-primary-strong: 0 0 30px hsla(197, 100%, 55%, 0.5);
   }
 }
 
@@ -82,6 +82,6 @@
   }
 
   .text-glow {
-    text-shadow: 0 0 10px hsl(110 100% 55% / 0.5);
+    text-shadow: 0 0 10px hsla(199, 98%, 56%, 0.5);
   }
 }

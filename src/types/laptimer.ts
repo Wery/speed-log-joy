@@ -6,6 +6,9 @@ export interface LapTime {
   sector2?: string;
   sector3?: string;
   sessionName: string;
+  trackName: string;
+  date: string;      // format: "YYYY-MM-DD"
+  startTime: string; // format: "HH:MM"
 }
 
 export interface Session {
@@ -29,4 +32,4 @@ export interface Track {
 }
 
 export type SortDirection = 'asc' | 'desc';
-export type SortField = 'lapNumber' | 'time' | 'sessionName';
+export type SortField = 'lapNumber' | 'time' | 'sessionName' | 'date' | 'delta';
