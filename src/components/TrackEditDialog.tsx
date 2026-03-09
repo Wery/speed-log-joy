@@ -13,7 +13,9 @@ interface TrackEditDialogProps {
   onSave: (track: Track) => void;
 }
 
-const hasGeolocation = typeof navigator !== "undefined" && "geolocation" in navigator;
+const BLE_SERVICE_UUID    = "00001ff8-0000-1000-8000-00805f9b34fb";
+const BLE_GPS_CHAR_UUID   = 0x0007;
+const hasBluetooth = typeof navigator !== "undefined" && "bluetooth" in navigator;
 
 const TrackEditDialog = ({ open, onOpenChange, track, onSave }: TrackEditDialogProps) => {
   const [name, setName] = useState("");
@@ -36,27 +38,41 @@ const TrackEditDialog = ({ open, onOpenChange, track, onSave }: TrackEditDialogP
     }
   }, [open, track]);
 
-  const getGps = (point: "p1" | "p2") => {
+  const getGpsFromDevice = async (point: "p1" | "p2") => {
     setGettingGps(point);
     setGpsError("");
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const lat = pos.coords.latitude.toFixed(7);
-        const lng = pos.coords.longitude.toFixed(7);
-        if (point === "p1") { setP1Lat(lat); setP1Lng(lng); }
-        else                 { setP2Lat(lat); setP2Lng(lng); }
-        setGettingGps(null);
-      },
-      (err) => {
-        setGpsError(
-          err.code === 1 ? "Brak zgody na dostęp do GPS." :
-          err.code === 2 ? "Lokalizacja niedostępna." :
-                           "Przekroczono czas oczekiwania na GPS."
-        );
-        setGettingGps(null);
-      },
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const bt = (navigator as any).bluetooth;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let server: any = null;
+    try {
+      const device = await bt.requestDevice({
+        filters: [{ services: [BLE_SERVICE_UUID] }],
+      });
+      server = await device.gatt!.connect();
+      const service = await server.getPrimaryService(BLE_SERVICE_UUID);
+      const char = await service.getCharacteristic(BLE_GPS_CHAR_UUID);
+      const value = await char.readValue();
+
+      // Pakiet: [protocol(1)][fixType(1)][numSV(1)][reserved(1)][lat(4 LE)][lon(4 LE)]
+      if (value.byteLength < 12) throw new Error("Nieprawidłowa odpowiedź urządzenia.");
+      const fixType = value.getUint8(1);
+      if (fixType === 0) {
+        setGpsError("Urządzenie nie ma jeszcze fixa GPS.");
+        return;
+      }
+      const lat = (value.getInt32(4, true) / 1e7).toFixed(7);
+      const lng = (value.getInt32(8, true) / 1e7).toFixed(7);
+      if (point === "p1") { setP1Lat(lat); setP1Lng(lng); }
+      else                 { setP2Lat(lat); setP2Lng(lng); }
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name !== "NotFoundError") {
+        setGpsError("Błąd: " + err.message);
+      }
+    } finally {
+      server?.disconnect();
+      setGettingGps(null);
+    }
   };
 
   const handleSave = () => {
@@ -71,7 +87,7 @@ const TrackEditDialog = ({ open, onOpenChange, track, onSave }: TrackEditDialogP
   };
 
   const GpsButton = ({ point }: { point: "p1" | "p2" }) => {
-    if (!hasGeolocation) return null;
+    if (!hasBluetooth) return null;
     const loading = gettingGps === point;
     return (
       <Button
@@ -80,12 +96,12 @@ const TrackEditDialog = ({ open, onOpenChange, track, onSave }: TrackEditDialogP
         size="sm"
         className="gap-1.5 h-7 px-2 text-xs"
         disabled={gettingGps !== null}
-        onClick={() => getGps(point)}
+        onClick={() => getGpsFromDevice(point)}
       >
         {loading
           ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
           : <LocateFixed className="w-3.5 h-3.5" />}
-        {loading ? "Pobieranie…" : "Pobierz GPS"}
+        {loading ? "Łączenie…" : "Pobierz GPS z urządzenia"}
       </Button>
     );
   };
