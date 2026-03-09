@@ -3,6 +3,7 @@ import { Session, Track, LapTime } from "@/types/laptimer";
 import LapTimesTable from "@/components/LapTimesTable";
 import SessionsPopup from "@/components/SessionsPopup";
 import TracksPopup from "@/components/TracksPopup";
+import RefLapsPopup from "@/components/RefLapsPopup";
 import BluetoothButton from "@/components/BluetoothButton";
 import BLEStatusModal from "@/components/BLEStatusModal";
 import { Timer } from "lucide-react";
@@ -85,6 +86,7 @@ const Index = () => {
               bleLoadingName={ble.loadingName}
               bleProgress={ble.progress}
               onBleSessionLoad={handleBleSessionLoad}
+              onBleSessionDelete={ble.deleteSessionFile}
             />
             <TracksPopup
               tracks={tracks}
@@ -93,6 +95,12 @@ const Index = () => {
               onBleImport={ble.loadTracksCsv}
               onBleUpload={ble.uploadTracksText}
               bleProgress={ble.progress}
+            />
+            <RefLapsPopup
+              bleConnected={ble.connected}
+              refLapFiles={ble.refLapFiles}
+              onListRefLaps={ble.listRefLaps}
+              onDeleteRefLap={ble.deleteRefLap}
             />
             <BluetoothButton
               connected={ble.connected}

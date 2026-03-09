@@ -17,6 +17,11 @@ export interface SessionFile {
   size: number;
 }
 
+export interface RefLapFile {
+  name: string;
+  size: number;
+}
+
 // Etapy widoczne w modalu
 export type BLEPhase =
   | "idle"          // nic się nie dzieje
@@ -39,18 +44,23 @@ interface UseBLEOptions {
 }
 
 export function useBLE({ onAutoLoaded }: UseBLEOptions = {}) {
-  const ctrlRef         = useRef<BluetoothRemoteGATTCharacteristic | null>(null);
-  const dataRef         = useRef<BluetoothRemoteGATTCharacteristic | null>(null);
-  const txDoneRef       = useRef<(() => void) | null>(null);
-  const rxDoneRef       = useRef<(() => void) | null>(null);
-  const sessionsBuf     = useRef<SessionFile[]>([]);
-  const listStreaming    = useRef(false);
-  const expectedSizeRef = useRef<number>(0);
-  const onAutoLoadedRef = useRef(onAutoLoaded);
+  const ctrlRef          = useRef<BluetoothRemoteGATTCharacteristic | null>(null);
+  const dataRef          = useRef<BluetoothRemoteGATTCharacteristic | null>(null);
+  const txDoneRef        = useRef<(() => void) | null>(null);
+  const rxDoneRef        = useRef<(() => void) | null>(null);
+  const delDoneRef       = useRef<((result: { ok: boolean; err?: string }) => void) | null>(null);
+  const delRefDoneRef    = useRef<((result: { ok: boolean; err?: string }) => void) | null>(null);
+  const sessionsBuf      = useRef<SessionFile[]>([]);
+  const listStreaming     = useRef(false);
+  const refLapsBuf       = useRef<RefLapFile[]>([]);
+  const listRefStreaming  = useRef(false);
+  const expectedSizeRef  = useRef<number>(0);
+  const onAutoLoadedRef  = useRef(onAutoLoaded);
   onAutoLoadedRef.current = onAutoLoaded;
 
   const [connected,    setConnected]    = useState(false);
   const [sessionFiles, setSessionFiles] = useState<SessionFile[]>([]);
+  const [refLapFiles,  setRefLapFiles]  = useState<RefLapFile[]>([]);
   const [loadingFile,  setLoadingFile]  = useState(false);
   const [loadingName,  setLoadingName]  = useState("");
 
@@ -124,6 +134,42 @@ export function useBLE({ onAutoLoaded }: UseBLEOptions = {}) {
       listStreaming.current = false;
       sessionsBuf.current.sort((a, b) => b.name.localeCompare(a.name));
       setSessionFiles([...sessionsBuf.current]);
+    }
+
+    if (f.CMD === "DEL" && delDoneRef.current) {
+      if (f.OK === "1") {
+        delDoneRef.current({ ok: true });
+      } else if (f.ERR) {
+        delDoneRef.current({ ok: false, err: f.ERR });
+      }
+      delDoneRef.current = null;
+    }
+
+    // LIST_REF streaming
+    if (f.CMD === "LIST_REF" && f.OK === "1") {
+      refLapsBuf.current = [];
+      listRefStreaming.current = true;
+      return;
+    }
+    if (line.startsWith("ITEM_REF;")) {
+      const it = parseFields(line);
+      if (it.NAME) refLapsBuf.current.push({ name: it.NAME, size: Number(it.SIZE || 0) });
+      return;
+    }
+    if (f.END === "1" && f.CMD === "LIST_REF" && listRefStreaming.current) {
+      listRefStreaming.current = false;
+      refLapsBuf.current.sort((a, b) => a.name.localeCompare(b.name));
+      setRefLapFiles([...refLapsBuf.current]);
+    }
+
+    // DEL_REF response
+    if (f.CMD === "DEL_REF" && delRefDoneRef.current) {
+      if (f.OK === "1") {
+        delRefDoneRef.current({ ok: true });
+      } else if (f.ERR) {
+        delRefDoneRef.current({ ok: false, err: f.ERR });
+      }
+      delRefDoneRef.current = null;
     }
   }, []);
 
@@ -266,6 +312,7 @@ export function useBLE({ onAutoLoaded }: UseBLEOptions = {}) {
     dataRef.current  = null;
     setConnected(false);
     setSessionFiles([]);
+    setRefLapFiles([]);
     setLoadingFile(false);
     setLoadingName("");
     setPhase({ phase: "idle", deviceName: "", fileName: "", progress: null, errorMsg: "" });
@@ -338,11 +385,61 @@ export function useBLE({ onAutoLoaded }: UseBLEOptions = {}) {
     [uploadTracksText]
   );
 
+  // ---- Lista okrążeń referencyjnych z urządzenia ----------
+  const listRefLaps = useCallback(async (): Promise<void> => {
+    if (!ctrlRef.current) throw new Error("Brak połączenia BLE");
+    refLapsBuf.current = [];
+    listRefStreaming.current = false;
+    setRefLapFiles([]);
+    await ctrlWrite("CMD=LIST_REF;");
+  }, [ctrlWrite]);
+
+  // ---- Usuń referencję z urządzenia -----------------------
+  const deleteRefLap = useCallback(
+    async (fileName: string): Promise<void> => {
+      if (!ctrlRef.current) throw new Error("Brak połączenia BLE");
+      await ctrlWrite(`CMD=DEL_REF;NAME=${fileName};`);
+      const result = await new Promise<{ ok: boolean; err?: string }>((resolve) => {
+        delRefDoneRef.current = resolve;
+        setTimeout(() => {
+          if (delRefDoneRef.current) {
+            delRefDoneRef.current = null;
+            resolve({ ok: false, err: "timeout" });
+          }
+        }, 5000);
+      });
+      if (!result.ok) throw new Error(result.err ?? "Usuwanie referencji nieudane");
+      setRefLapFiles((prev) => prev.filter((f) => f.name !== fileName));
+    },
+    [ctrlWrite]
+  );
+
+  // ---- Usuń plik sesji z urządzenia -----------------------
+  const deleteSessionFile = useCallback(
+    async (fileName: string): Promise<void> => {
+      if (!ctrlRef.current) throw new Error("Brak połączenia BLE");
+      await ctrlWrite(`CMD=DEL;NAME=${fileName};`);
+      const result = await new Promise<{ ok: boolean; err?: string }>((resolve) => {
+        delDoneRef.current = resolve;
+        setTimeout(() => {
+          if (delDoneRef.current) {
+            delDoneRef.current = null;
+            resolve({ ok: false, err: "timeout" });
+          }
+        }, 5000);
+      });
+      if (!result.ok) throw new Error(result.err ?? "Usuwanie nieudane");
+      setSessionFiles((prev) => prev.filter((f) => f.name !== fileName));
+    },
+    [ctrlWrite]
+  );
+
   return {
     connected,
     connecting: status.phase === "connecting",
     deviceName: status.deviceName,
     sessionFiles,
+    refLapFiles,
     loadingFile,
     loadingName,
     progress:   status.progress,
@@ -353,5 +450,8 @@ export function useBLE({ onAutoLoaded }: UseBLEOptions = {}) {
     loadTracksCsv,
     uploadTracks,
     uploadTracksText,
+    deleteSessionFile,
+    listRefLaps,
+    deleteRefLap,
   };
 }

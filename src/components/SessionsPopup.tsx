@@ -5,10 +5,15 @@ import { parseSessionCsv } from "@/lib/laptimer-utils";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel,
+  AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
+  AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  List, Search, Upload, X, CheckCircle, Loader2, Download, HardDriveDownload,
+  List, Search, Upload, X, CheckCircle, Loader2, Download, HardDriveDownload, Trash2,
 } from "lucide-react";
 
 interface SessionsPopupProps {
@@ -22,6 +27,7 @@ interface SessionsPopupProps {
   bleLoadingName?: string;
   bleProgress?: number | null;
   onBleSessionLoad?: (fileName: string) => Promise<Session>;
+  onBleSessionDelete?: (fileName: string) => Promise<void>;
 }
 
 const SessionsPopup = ({
@@ -35,8 +41,11 @@ const SessionsPopup = ({
   bleLoadingName = "",
   bleProgress = null,
   onBleSessionLoad,
+  onBleSessionDelete,
 }: SessionsPopupProps) => {
   const [search, setSearch] = useState("");
+  const [deleteConfirmFile, setDeleteConfirmFile] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [open, setOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -88,6 +97,21 @@ const SessionsPopup = ({
     }
   };
 
+  const handleBleDelete = async (fileName: string) => {
+    if (!onBleSessionDelete) return;
+    setDeleting(true);
+    try {
+      await onBleSessionDelete(fileName);
+      const existing = sessionByBleFile(fileName);
+      if (existing) removeSession(existing.id);
+    } catch (err) {
+      console.error("Błąd usuwania sesji z urządzenia:", err);
+    } finally {
+      setDeleting(false);
+      setDeleteConfirmFile(null);
+    }
+  };
+
   // ---- Budowanie jednej wspólnej listy ---------------------
   //
   // Gdy BLE połączone: lista = pliki z urządzenia (bleSessionFiles),
@@ -118,6 +142,7 @@ const SessionsPopup = ({
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button variant="outline" className="gap-2">
@@ -239,7 +264,7 @@ const SessionsPopup = ({
                         <HardDriveDownload className="w-3.5 h-3.5 flex-shrink-0 text-primary/50" title="Pobrano" />
                       )}
 
-                      {/* Usuń pobraną sesję */}
+                      {/* Usuń pobraną sesję (z pamięci aplikacji) */}
                       {loaded && !isLoading && (
                         <button
                           onClick={(e) => {
@@ -247,8 +272,24 @@ const SessionsPopup = ({
                             removeSession(existing!.id);
                           }}
                           className="p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-colors"
+                          title="Usuń z widoku"
                         >
                           <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+
+                      {/* Usuń plik z urządzenia */}
+                      {onBleSessionDelete && !isLoading && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteConfirmFile(f.name);
+                          }}
+                          disabled={deleting}
+                          className="p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-colors disabled:opacity-40"
+                          title="Usuń z urządzenia"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       )}
                     </div>
@@ -305,6 +346,33 @@ const SessionsPopup = ({
         </div>
       </DialogContent>
     </Dialog>
+
+    <AlertDialog
+      open={deleteConfirmFile !== null}
+      onOpenChange={(open) => { if (!open) setDeleteConfirmFile(null); }}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Usuń sesję z urządzenia?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Plik <span className="font-mono font-semibold">{deleteConfirmFile}</span> zostanie
+            trwale usunięty z karty SD urządzenia. Tej operacji nie można cofnąć.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={deleting}>Anuluj</AlertDialogCancel>
+          <AlertDialogAction
+            disabled={deleting}
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            onClick={() => deleteConfirmFile && handleBleDelete(deleteConfirmFile)}
+          >
+            {deleting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+            Usuń
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 };
 
