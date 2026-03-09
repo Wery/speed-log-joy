@@ -4,7 +4,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { LocateFixed, Loader2 } from "lucide-react";
+import { LocateFixed, Loader2, Map } from "lucide-react";
+import MapPickerDialog from "@/components/MapPickerDialog";
 
 interface TrackEditDialogProps {
   open: boolean;
@@ -13,8 +14,8 @@ interface TrackEditDialogProps {
   onSave: (track: Track) => void;
 }
 
-const BLE_SERVICE_UUID    = "00001ff8-0000-1000-8000-00805f9b34fb";
-const BLE_GPS_CHAR_UUID   = 0x0007;
+const BLE_SERVICE_UUID  = "00001ff8-0000-1000-8000-00805f9b34fb";
+const BLE_GPS_CHAR_UUID = 0x0007;
 const hasBluetooth = typeof navigator !== "undefined" && "bluetooth" in navigator;
 
 const TrackEditDialog = ({ open, onOpenChange, track, onSave }: TrackEditDialogProps) => {
@@ -25,8 +26,11 @@ const TrackEditDialog = ({ open, onOpenChange, track, onSave }: TrackEditDialogP
   const [p2Lng, setP2Lng] = useState("");
   const [gettingGps, setGettingGps] = useState<"p1" | "p2" | null>(null);
   const [gpsError, setGpsError] = useState("");
+  const [mapPicker, setMapPicker] = useState<{ open: boolean; point: "p1" | "p2" }>({
+    open: false,
+    point: "p1",
+  });
 
-  // Załaduj dane toru do formularza za każdym razem gdy dialog się otwiera
   useEffect(() => {
     if (open) {
       setName(track?.name ?? "");
@@ -75,6 +79,17 @@ const TrackEditDialog = ({ open, onOpenChange, track, onSave }: TrackEditDialogP
     }
   };
 
+  const openMapPicker = (point: "p1" | "p2") => {
+    setMapPicker({ open: true, point });
+  };
+
+  const handleMapConfirm = (lat: number, lng: number) => {
+    const latStr = lat.toFixed(7);
+    const lngStr = lng.toFixed(7);
+    if (mapPicker.point === "p1") { setP1Lat(latStr); setP1Lng(lngStr); }
+    else                          { setP2Lat(latStr); setP2Lng(lngStr); }
+  };
+
   const handleSave = () => {
     const updated: Track = {
       id: track?.id || crypto.randomUUID(),
@@ -86,82 +101,110 @@ const TrackEditDialog = ({ open, onOpenChange, track, onSave }: TrackEditDialogP
     onOpenChange(false);
   };
 
-  const GpsButton = ({ point }: { point: "p1" | "p2" }) => {
-    if (!hasBluetooth) return null;
+  const PointButtons = ({ point }: { point: "p1" | "p2" }) => {
     const loading = gettingGps === point;
     return (
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="gap-1.5 h-7 px-2 text-xs"
-        disabled={gettingGps !== null}
-        onClick={() => getGpsFromDevice(point)}
-      >
-        {loading
-          ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-          : <LocateFixed className="w-3.5 h-3.5" />}
-        {loading ? "Łączenie…" : "Pobierz GPS z urządzenia"}
-      </Button>
+      <div className="flex gap-1.5">
+        {hasBluetooth && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="gap-1.5 h-7 px-2 text-xs"
+            disabled={gettingGps !== null}
+            onClick={() => getGpsFromDevice(point)}
+          >
+            {loading
+              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              : <LocateFixed className="w-3.5 h-3.5" />}
+            {loading ? "Łączenie…" : "GPS z urządzenia"}
+          </Button>
+        )}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="gap-1.5 h-7 px-2 text-xs"
+          disabled={gettingGps !== null}
+          onClick={() => openMapPicker(point)}
+        >
+          <Map className="w-3.5 h-3.5" />
+          Mapa
+        </Button>
+      </div>
     );
   };
 
+  // Pobierz aktualne współrzędne dla wybranego punktu jako środek mapy
+  const mapInitialLat = mapPicker.point === "p1" ? parseFloat(p1Lat) : parseFloat(p2Lat);
+  const mapInitialLng = mapPicker.point === "p1" ? parseFloat(p1Lng) : parseFloat(p2Lng);
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>{track ? "Edytuj tor" : "Dodaj nowy tor"}</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4">
-          <div>
-            <Label>Nazwa toru</Label>
-            <Input value={name} onChange={e => setName(e.target.value)} placeholder="np. Tor Poznań" />
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{track ? "Edytuj tor" : "Dodaj nowy tor"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Nazwa toru</Label>
+              <Input value={name} onChange={e => setName(e.target.value)} placeholder="np. Tor Poznań" />
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium text-muted-foreground">Punkt 1 linii mety</p>
+                <PointButtons point="p1" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs">Szerokość (lat)</Label>
+                  <Input value={p1Lat} onChange={e => setP1Lat(e.target.value)} placeholder="52.1234567" className="font-mono text-sm" />
+                </div>
+                <div>
+                  <Label className="text-xs">Długość (lng)</Label>
+                  <Input value={p1Lng} onChange={e => setP1Lng(e.target.value)} placeholder="16.5678901" className="font-mono text-sm" />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium text-muted-foreground">Punkt 2 linii mety</p>
+                <PointButtons point="p2" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs">Szerokość (lat)</Label>
+                  <Input value={p2Lat} onChange={e => setP2Lat(e.target.value)} placeholder="52.1234568" className="font-mono text-sm" />
+                </div>
+                <div>
+                  <Label className="text-xs">Długość (lng)</Label>
+                  <Input value={p2Lng} onChange={e => setP2Lng(e.target.value)} placeholder="16.5678902" className="font-mono text-sm" />
+                </div>
+              </div>
+            </div>
+
+            {gpsError && (
+              <p className="text-xs text-destructive">{gpsError}</p>
+            )}
+
+            <Button onClick={handleSave} className="w-full">
+              {track ? "Zapisz zmiany" : "Dodaj tor"}
+            </Button>
           </div>
+        </DialogContent>
+      </Dialog>
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-medium text-muted-foreground">Punkt 1 linii mety</p>
-              <GpsButton point="p1" />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <Label className="text-xs">Szerokość (lat)</Label>
-                <Input value={p1Lat} onChange={e => setP1Lat(e.target.value)} placeholder="52.1234567" className="font-mono text-sm" />
-              </div>
-              <div>
-                <Label className="text-xs">Długość (lng)</Label>
-                <Input value={p1Lng} onChange={e => setP1Lng(e.target.value)} placeholder="16.5678901" className="font-mono text-sm" />
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-medium text-muted-foreground">Punkt 2 linii mety</p>
-              <GpsButton point="p2" />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <Label className="text-xs">Szerokość (lat)</Label>
-                <Input value={p2Lat} onChange={e => setP2Lat(e.target.value)} placeholder="52.1234568" className="font-mono text-sm" />
-              </div>
-              <div>
-                <Label className="text-xs">Długość (lng)</Label>
-                <Input value={p2Lng} onChange={e => setP2Lng(e.target.value)} placeholder="16.5678902" className="font-mono text-sm" />
-              </div>
-            </div>
-          </div>
-
-          {gpsError && (
-            <p className="text-xs text-destructive">{gpsError}</p>
-          )}
-
-          <Button onClick={handleSave} className="w-full">
-            {track ? "Zapisz zmiany" : "Dodaj tor"}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+      <MapPickerDialog
+        open={mapPicker.open}
+        onOpenChange={v => setMapPicker(prev => ({ ...prev, open: v }))}
+        initialLat={isFinite(mapInitialLat) ? mapInitialLat : undefined}
+        initialLng={isFinite(mapInitialLng) ? mapInitialLng : undefined}
+        onConfirm={handleMapConfirm}
+      />
+    </>
   );
 };
 
